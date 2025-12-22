@@ -288,6 +288,41 @@ def add_data_field_form(user, project):
             ],
         }
     ]
+    
+def sam_text_form(user, project):
+    return [
+        {
+            'columnCount': 1,
+            'fields': [
+                {'type': 'input', 'name': 'text_prompt', 'label': 'Input text prompt'},
+            ],
+        }
+    ]
+
+
+def sam_predictions(project, queryset, **kwargs):
+
+    request = kwargs['request']
+
+    text_prompt = request.data.get('text_prompt')
+
+    context = {
+        'result': [
+            {'value': {'text': [text_prompt]}, 'from_name': 'prompt', 'to_name': 'image', 'type': 'textarea', 'origin': 'manual'},
+        ],
+    }
+
+    """Call ML backend for prediction evaluation of the task queryset"""
+    tasks = queryset
+    if not tasks:
+        return
+    project = tasks[0].project
+
+
+    for ml_backend in project.ml_backends.all():
+        ml_backend.predict_tasks(tasks=tasks, context=context)
+
+    return {'processed_items': queryset.count(), 'detail': 'Retrieved ' + str(queryset.count()) + ' predictions'}
 
 
 actions: list[DataManagerAction] = [
@@ -333,5 +368,19 @@ actions: list[DataManagerAction] = [
             'type': 'confirm',
             'form': rename_labels_form,
         },
+    },
+    {
+        'entry_point': sam_predictions,
+        'permission': all_permissions.projects_change,
+        'title': 'Add Text Prompt',
+        'order': 1,
+        'experimental': True,
+        'dialog': {
+            'text': 'After selecting the images you want to annotate, enter in the text prompt for classes you want to select and submit this form.'
+            'Please confirm your action.',
+            'type': 'confirm',
+            'form': sam_text_form,
+
+        }
     },
 ]

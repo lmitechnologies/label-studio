@@ -259,7 +259,7 @@ class MLBackend(models.Model):
         }
 
     def _get_predictions_from_ml_backend_one_by_one(
-        self, serialized_tasks: List[Dict], current_responses: List[Dict]
+        self, serialized_tasks: List[Dict], current_responses: List[Dict], context
     ) -> List[Dict]:
         """
         This is helper method to get predictions from ML backend one by one
@@ -277,7 +277,7 @@ class MLBackend(models.Model):
             predictions = []
             for serialized_task in serialized_tasks:
                 # get predictions per task
-                predictions.extend(self._get_predictions_from_ml_backend([serialized_task]))
+                predictions.extend(self._get_predictions_from_ml_backend([serialized_task], context))
 
             return predictions
         else:
@@ -289,8 +289,8 @@ class MLBackend(models.Model):
             )
             return []
 
-    def _get_predictions_from_ml_backend(self, serialized_tasks: List[Dict]) -> List[Dict]:
-        result = self.api.make_predictions(serialized_tasks, self.project)
+    def _get_predictions_from_ml_backend(self, serialized_tasks: List[Dict], context) -> List[Dict]:
+        result = self.api.make_predictions(serialized_tasks, self.project, context)
 
         # response validation
         if result.is_error:
@@ -312,7 +312,7 @@ class MLBackend(models.Model):
             # Number of tasks and responses are not equal
             # It can happen if ML backend doesn't support batch processing but only process one task at a time
             # In the future versions, we may better consider this as an error and deprecate this code branch
-            return self._get_predictions_from_ml_backend_one_by_one(serialized_tasks, responses)
+            return self._get_predictions_from_ml_backend_one_by_one(serialized_tasks, responses, context)
 
         # ML backend supports batch processing
         for task, response in zip(serialized_tasks, responses):
@@ -339,7 +339,7 @@ class MLBackend(models.Model):
                 )
         return predictions
 
-    def predict_tasks(self, tasks):
+    def predict_tasks(self, tasks, context=None):
         model_version = self.update_state()
         if self.not_ready:
             logger.debug(f'ML backend {self} is not ready')
@@ -358,7 +358,7 @@ class MLBackend(models.Model):
             logger.debug(f'All tasks already have prediction from model version={self.model_version}')
             return model_version
         tasks_ser = TaskSimpleSerializer(tasks, many=True).data
-        predictions = self._get_predictions_from_ml_backend(tasks_ser)
+        predictions = self._get_predictions_from_ml_backend(tasks_ser, context)
         with conditional_atomic(predicate=db_is_not_sqlite):
             prediction_ser = PredictionSerializer(data=predictions, many=True)
             prediction_ser.is_valid(raise_exception=True)
